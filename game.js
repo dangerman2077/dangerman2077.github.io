@@ -25,7 +25,18 @@ function show(id) {
   const node = document.importNode(tpl.content, true).firstElementChild;
   if (firstShow) { screen.replaceWith(node); firstShow = false; }
   else app.replaceChild(node, screen);
-  retribute('data-note');
+  return (screen = node);
+}
+
+/* ---------- Интерфейс 1: меню ---------- */
+function showMenu() {
+  return new Promise(resolve => {
+    show('menu');
+    const f = document.forms.levelForm;                        // доступ по имени
+    for (let i = 0; i < f.elements.length; i++) {              // и по порядковому номеру
+      const b = f.elements[i];
+      const note = document.createElement('small');
+      note.textContent = b.getAttribute('data-note');
       b.append(note);
       b.onclick = () => resolve({ name: b.name, title: b.dataset.title, tries: +b.dataset.tries });
     }
