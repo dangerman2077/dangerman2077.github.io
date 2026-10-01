@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Слово</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>Слово</h1></header>
+<main id="app"><section id="loading"></section></main>
+<div id="toast"></div>
+
+<!-- Образец интерфейса 1: главное меню -->
+<template id="tpl-menu">
+  <section class="screen" id="menu">
+    <p class="lead">Угадайте слово из пяти букв.<br>Выберите сложность:</p>
+    <form name="levelForm" class="levels">
+      <button type="button" name="easy" data-title="Лёгкий" data-note="7 попыток" data-tries="7">Лёгкий</button>
+      <button type="button" name="normal" data-title="Нормальный" data-note="6 попыток" data-tries="6">Нормальный</button>
+      <button type="button" name="hard" data-title="Сложный" data-note="4 попытки" data-tries="4">Сложный</button>
+    </form>
+  </section>
+</template>
+
+<!-- Образец интерфейса 2: игровое поле и клавиатура ЙЦУКЕН -->
+<template id="tpl-game">
+  <section class="screen" id="game">
+    <div id="board"></div>
+    <div id="kb"></div>
+  </section>
+</template>
+
+<!-- Образец интерфейса 3: завершение игры -->
+<template id="tpl-end">
+  <section class="screen" id="end">
+    <h2 id="endTitle"></h2>
+    <p id="endText"></p>
+    <div class="levels">
+      <button type="button" name="again">Ещё раз</button>
+      <button type="button" name="menu">В меню</button>
+    </div>
+  </section>
+</template>
+
+<script src="game.js"></script>
+</body>
+</html>

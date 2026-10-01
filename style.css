@@ -1,0 +1,254 @@
+:root {
+    --bg: #16213a;
+    --panel: #1f2d4d;
+    --line: #3b4a6b;
+    --ok: #2f9e44;
+    --mid: #d9a21b;
+    --off: #5d6474;
+    --key: #dfe4f0;
+    --hover: #8ce99a
+}
+
+* {
+    box-sizing: border-box
+}
+
+html,
+body {
+    margin: 0
+}
+
+body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: #eef1f8;
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center
+}
+
+header h1 {
+    font: 700 2.4rem Georgia, serif;
+    letter-spacing: .12em;
+    margin: .6rem 0 .2rem
+}
+
+main {
+    width: 100%;
+    max-width: 520px;
+    padding: 0 .6rem 1.5rem
+}
+
+.screen {
+    text-align: center
+}
+
+.lead {
+    font-size: 1.1rem;
+    line-height: 1.5
+}
+
+.levels {
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+    max-width: 300px;
+    margin: 1.2rem auto
+}
+
+.levels button {
+    font: inherit;
+    font-size: 1.15rem;
+    padding: .8rem 1rem;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    color: inherit;
+    cursor: pointer;
+    transition: background .15s, border-color .15s
+}
+
+.levels button:hover,
+.levels button:focus-visible {
+    background: var(--ok);
+    border-color: var(--hover);
+    outline: none
+}
+
+.levels small {
+    display: block;
+    font-size: .8rem;
+    opacity: .75;
+    margin-top: .15rem
+}
+
+.info {
+    margin: .2rem 0 .6rem;
+    opacity: .8
+}
+
+#board {
+    display: grid;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 1rem
+}
+
+.row {
+    display: flex;
+    gap: 6px;
+    justify-content: center
+}
+
+.tile {
+    width: min(56px, 14vw);
+    height: min(56px, 14vw);
+    border: 2px solid var(--line);
+    display: grid;
+    place-items: center;
+    font: 700 1.6rem Georgia, serif;
+    text-transform: uppercase;
+    border-radius: 6px;
+    transition: border-color .1s
+}
+
+.tile.filled {
+    border-color: #8fa3c7
+}
+
+.tile.over {
+    border-color: var(--hover);
+    background: #2a3c63
+}
+
+.tile[data-state=correct] {
+    background: var(--ok);
+    border-color: var(--ok)
+}
+
+.tile[data-state=present] {
+    background: var(--mid);
+    border-color: var(--mid)
+}
+
+.tile[data-state=absent] {
+    background: var(--off);
+    border-color: var(--off)
+}
+
+.tile.flip {
+    animation: flip .4s ease-in-out
+}
+
+@keyframes flip {
+    50% {
+        transform: rotateX(90deg)
+    }
+}
+
+#kb {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    user-select: none
+}
+
+.krow {
+    display: flex;
+    gap: 4px;
+    justify-content: center
+}
+
+.key {
+    flex: 1;
+    max-width: 44px;
+    min-width: 0;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    background: var(--key);
+    color: #1a2236;
+    border-radius: 6px;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: grab;
+    touch-action: none
+}
+
+.key.wide {
+    max-width: 64px;
+    flex: 1.5;
+    font-size: .8rem;
+    cursor: pointer;
+    touch-action: auto
+}
+
+.key.focused {
+    outline: 3px solid #fff
+}
+
+.key[data-state=absent] {
+    background: #444b59;
+    color: #8a91a1
+}
+
+.key[data-state=present] {
+    background: var(--mid);
+    color: #fff
+}
+
+.key[data-state=correct] {
+    background: var(--ok);
+    color: #fff
+}
+
+.ghost {
+    position: fixed;
+    pointer-events: none;
+    transform: translate(-50%, -130%);
+    width: 48px;
+    opacity: .9;
+    z-index: 9
+}
+
+#toast {
+    position: fixed;
+    top: 4.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #eef1f8;
+    color: #16213a;
+    padding: .6rem 1rem;
+    border-radius: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s
+}
+
+#toast.show {
+    opacity: 1
+}
+
+#end h2 {
+    font: 700 2.2rem Georgia, serif;
+    margin: 1rem 0 .4rem
+}
+
+#end[data-result=win] h2 {
+    color: #69db7c
+}
+
+#end[data-result=lose] h2 {
+    color: #ff8787
+}
+
+#end p {
+    line-height: 1.6
+}
+
+@media (prefers-reduced-motion:reduce) {
+    .tile.flip {
+        animation: none
+    }
+}
