@@ -1,275 +1,331 @@
-const WORDS = ('арбуз белка берег бетон билет блюдо ветер вилка вишня волна ворон время гараж герой голос гроза груша дочка дождь жизнь ' +
- 'завод зебра земля зерно игрок камин канал карта класс книга кошка крыша лодка малыш масло мечта мышка народ олень ответ отряд паром ' +
- 'певец песня пилот плита почта право птица радио речка рубль рыбак сахар семья север слово спина стена театр улица успех холод цветы ' +
- 'чашка шапка школа ягода ясень поезд лимон банан сосна ножка пятно').split(' ');
-const LAYOUT = ['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбю'];   // ЙЦУКЕН
-const RANK = { absent: 1, present: 2, correct: 3 };
+const WORDS = [
+    'арбуз','банан','берег','билет','ветер','город','груша','доска','драка','жираф',
+    'замок','земля','игрок','камень','карта','книга','кобра','кофта','лампа','лимон',
+    'маска','метро','музыка','народ','облако','океан','парус','песок','пилот',
+    'пламя','поезд','почва','птица','радио','робот','сахар','север','слово',
+    'спорт','стена','столб','струя','театр','трава','улица','фраза','хлеба'
+];
 
-const app = document.getElementById('app');
-const toast = document.getElementById('toast');
-let screen = document.getElementById('loading'), firstShow = true, toastTimer;
+const KEY_ROWS = ['йцукенгшщзхъ', 'фывапролджэ', 'ячсмитьбю'];
+const state = {
+    difficulty: localStorage.getItem('wordleDifficulty') || 'normal',
+    maxAttempts: Number(localStorage.getItem('wordleAttempts')) || 6,
+    answer: WORDS[Math.floor(Math.random() * WORDS.length)],
+    row: 0,
+    col: 0,
+    guesses: [],
+    finished: false,
+    pendingResult: null
+};
 
-const wait = ms => new Promise(r => setTimeout(r, ms));
-const animEnd = el => new Promise(r => el.addEventListener('animationend', r, { once: true })); // Promise + событие анимации
+const board = document.getElementById('board');
+const keyboard = document.getElementById('keyboard');
+const message = document.getElementById('message');
+const attemptCounter = document.getElementById('attemptCounter');
+const difficultyLabel = document.getElementById('difficultyLabel');
 
-function say(text) {
-  toast.textContent = text;
-  toast.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 1500);
-}
+const levelNames = { easy: 'Легко', normal: 'Нормально', hard: 'Сложно' };
+difficultyLabel.textContent = levelNames[state.difficulty];
 
-// Генерация интерфейса по образцу из <template>
-function show(id) {
-  const tpl = document.getElementById('tpl-' + id);
-  const node = document.importNode(tpl.content, true).firstElementChild;
-  if (firstShow) { screen.replaceWith(node); firstShow = false; }
-  else app.replaceChild(node, screen);
-  return (screen = node);
-}
-
-/* ---------- Интерфейс 1: меню ---------- */
-function showMenu() {
-  return new Promise(resolve => {
-    show('menu');
-    const f = document.forms.levelForm;                        // доступ по имени
-    for (let i = 0; i < f.elements.length; i++) {              // и по порядковому номеру
-      const b = f.elements[i];
-      const note = document.createElement('small');
-      note.textContent = b.getAttribute('data-note');
-      b.append(note);
-      b.onclick = () => resolve({ name: b.name, title: b.dataset.title, tries: +b.dataset.tries });
+function createBoard() {
+    // Удаляем старые дочерние узлы перед построением нового поля.
+    while (board.firstChild) board.firstChild.remove();
+    for (let r = 0; r < state.maxAttempts; r++) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.dataset.row = r;
+        for (let c = 0; c < 5; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.row = r;
+            cell.dataset.col = c;
+            cell.setAttribute('aria-label', `Строка ${r + 1}, буква ${c + 1}`);
+            row.appendChild(cell);
+        }
+        board.appendChild(row);
     }
-  });
 }
 
-/* ---------- Интерфейс 2: игра ---------- */
-function score(g, s) {
-  const res = Array(5).fill('absent'), left = [...s];
-  for (let i = 0; i < 5; i++) if (g[i] === s[i]) { res[i] = 'correct'; left[i] = null; }
-  for (let i = 0; i < 5; i++) if (res[i] !== 'correct') {
-    const k = left.indexOf(g[i]);
-    if (k > -1) { res[i] = 'present'; left[k] = null; }
-  }
-  return res;
+function createKeyboard() {
+    keyboard.textContent = '';
+    KEY_ROWS.forEach(function (letters) {
+        const row = document.createElement('div');
+        row.className = 'key-row';
+        letters.split('').forEach(function (letter) {
+            const key = document.createElement('button');
+            key.type = 'button';
+            key.className = 'key';
+            key.textContent = letter.toUpperCase();
+            key.dataset.letter = letter;
+            key.setAttribute('draggable', 'true');
+            key.addEventListener('click', function () {
+                if (touchHandled) return;
+                addLetter(letter);
+            });
+            key.addEventListener('dragstart', handleDragStart);
+            key.addEventListener('touchstart', handleTouchStart, { passive: false });
+            // События mouseover/mouseout — требование задания и пример из лекции.
+            key.addEventListener('mouseover', function (event) {
+                if (!event.target.classList.contains('correct') && !event.target.classList.contains('absent')) {
+                    event.target.style.backgroundColor = '#22c55e';
+                }
+            });
+            key.addEventListener('mouseout', function (event) {
+                if (!event.target.classList.contains('correct') && !event.target.classList.contains('absent')) {
+                    event.target.style.backgroundColor = '';
+                }
+            });
+            row.appendChild(key);
+        });
+        // Кнопки управления размещаются как на обычной экранной клавиатуре:
+        // Backspace — в конце второго ряда, ВВОД — в конце третьего ряда.
+        if (letters === KEY_ROWS[1]) {
+            row.appendChild(makeControlKey('⌫', 'backspace'));
+        }
+        if (letters === KEY_ROWS[2]) {
+            row.appendChild(makeControlKey('ВВОД', 'enter'));
+        }
+        keyboard.appendChild(row);
+    });
 }
 
-function playGame(level) {
-  return new Promise(resolve => {
-    const tries = level.tries, secret = WORDS[Math.floor(Math.random() * WORDS.length)];
-    const game = show('game');
-    const board = game.querySelector('#board'), kb = game.lastElementChild;
-    const info = document.createElement('p');
-    info.className = 'info';
-    board.before(info);
+function makeControlKey(text, action) {
+    const key = document.createElement('button');
+    key.type = 'button';
+    key.className = 'key';
+    key.textContent = text;
+    key.dataset.action = action;
+    key.addEventListener('click', function () {
+        if (action === 'backspace') removeLetter();
+        else checkGuess();
+    });
+    return key;
+}
 
-    let row = 0, cur = Array(5).fill(''), over = false, busy = false;
-    const t0 = performance.now();
+function getCurrentCells() {
+    const row = board.querySelectorAll('.row')[state.row];
+    return row.querySelectorAll('.cell');
+}
 
-    // поле
-    for (let r = 0; r < tries; r++) {
-      const d = document.createElement('div');
-      d.className = 'row';
-      for (let c = 0; c < 5; c++) {
-        const t = document.createElement('div');
-        t.className = 'tile';
-        t.dataset.col = c;
-        d.appendChild(t);
-      }
-      board.appendChild(d);
+function addLetter(letter) {
+    if (state.finished || state.col >= 5) return;
+    const cells = getCurrentCells();
+    cells[state.col].textContent = letter.toUpperCase();
+    cells[state.col].classList.add('filled');
+    state.col++;
+}
+
+function removeLetter() {
+    if (state.finished || state.col <= 0) return;
+    state.col--;
+    const cells = getCurrentCells();
+    cells[state.col].textContent = '';
+    cells[state.col].classList.remove('filled');
+}
+
+function currentWord() {
+    return Array.from(getCurrentCells()).map(cell => cell.textContent.toLowerCase()).join('');
+}
+
+function checkGuess() {
+    if (state.finished) return;
+    if (state.col < 5) {
+        showMessage('Введите 5 букв.');
+        return;
     }
-    // клавиатура
-    const fnKey = (label, act) => {
-      const k = document.createElement('div');
-      k.className = 'key wide'; k.tabIndex = 0; k.textContent = label; k.dataset.act = act;
-      return k;
+
+    const guess = currentWord();
+    const cells = getCurrentCells();
+    const result = evaluateGuess(guess, state.answer);
+    result.forEach(function (status, index) {
+        cells[index].classList.remove('filled');
+        cells[index].classList.add(status);
+        // Клетки «переворачиваются» по очереди: задержка зависит от номера клетки.
+        cells[index].style.animationDelay = (index * 0.15) + 's';
+        cells[index].classList.add('reveal');
+    });
+    updateKeyboard(guess, result);
+    state.guesses.push(guess);
+
+    // Игра окончена: ввод блокируется, а переход к результату произойдёт
+    // в обработчике animationend после переворота последней клетки.
+    if (guess === state.answer) {
+        state.finished = true;
+        state.pendingResult = true;
+        return;
+    }
+    if (state.row + 1 >= state.maxAttempts) {
+        state.finished = true;
+        state.pendingResult = false;
+        return;
+    }
+    state.row++;
+    state.col = 0;
+    updateCounter();
+}
+
+function evaluateGuess(guess, answer) {
+    const result = Array(5).fill('absent');
+    const remaining = answer.split('');
+    for (let i = 0; i < 5; i++) {
+        if (guess[i] === answer[i]) {
+            result[i] = 'correct';
+            remaining[i] = null;
+        }
+    }
+    for (let i = 0; i < 5; i++) {
+        if (result[i] === 'correct') continue;
+        const found = remaining.indexOf(guess[i]);
+        if (found !== -1) {
+            result[i] = 'present';
+            remaining[found] = null;
+        }
+    }
+    return result;
+}
+
+function updateKeyboard(guess, result) {
+    const priority = { absent: 1, present: 2, correct: 3 };
+    guess.split('').forEach(function (letter, index) {
+        const key = keyboard.querySelector(`[data-letter="${letter}"]`);
+        if (!key) return;
+        const old = key.dataset.state;
+        if (!old || priority[result[index]] > priority[old]) {
+            key.dataset.state = result[index];
+            key.classList.remove('absent', 'present', 'correct');
+            key.classList.add(result[index]);
+        }
+    });
+}
+
+function showMessage(text) {
+    message.textContent = text;
+    window.clearTimeout(showMessage.timer);
+    showMessage.timer = window.setTimeout(function () {
+        message.textContent = '';
+    }, 1800);
+}
+
+function updateCounter() {
+    attemptCounter.textContent = `Попытка ${state.row + 1} из ${state.maxAttempts}`;
+}
+
+// Drag & Drop: клавиша является draggable-элементом, клетка — drop target.
+function handleDragStart(event) {
+    event.dataTransfer.setData('text/plain', event.currentTarget.dataset.letter);
+    event.dataTransfer.effectAllowed = 'copy';
+}
+
+board.addEventListener('dragover', function (event) {
+    const cell = event.target.closest('.cell');
+    if (!cell) return;
+    event.preventDefault();
+    cell.classList.add('drag-target');
+});
+
+board.addEventListener('dragleave', function (event) {
+    const cell = event.target.closest('.cell');
+    if (cell) cell.classList.remove('drag-target');
+});
+
+board.addEventListener('drop', function (event) {
+    event.preventDefault();
+    const cell = event.target.closest('.cell');
+    if (!cell) return;
+    cell.classList.remove('drag-target');
+    const letter = event.dataTransfer.getData('text/plain');
+    const row = Number(cell.dataset.row);
+    const col = Number(cell.dataset.col);
+    if (row === state.row && col === state.col && letter) addLetter(letter);
+});
+
+// Сенсорный вариант перетаскивания: touchstart/touchmove/touchend.
+let touchLetter = '';
+let touchHandled = false;
+function handleTouchStart(event) {
+    event.preventDefault();
+    touchLetter = event.currentTarget.dataset.letter;
+    touchHandled = false;
+}
+keyboard.addEventListener('touchend', function () {
+    if (touchLetter) {
+        addLetter(touchLetter);
+        touchLetter = '';
+        touchHandled = true;
+        window.setTimeout(function () { touchHandled = false; }, 0);
+    }
+}, { passive: false });
+
+// События анимации: их генерирует браузер, а не пользователь.
+// Оба события всплывают, поэтому достаточно одного обработчика на поле.
+board.addEventListener('animationstart', function (event) {
+    if (event.animationName !== 'flip') return;
+    if (event.target.dataset.col === '0') showMessage('Проверяем слово...');
+});
+
+board.addEventListener('animationend', function (event) {
+    if (event.animationName !== 'flip') return;
+    const cell = event.target;
+    cell.classList.remove('reveal');
+    cell.style.animationDelay = '';
+    // Последняя клетка ряда закончила анимацию — можно завершать игру.
+    if (cell.dataset.col === '4' && state.pendingResult !== null) {
+        finishGame(state.pendingResult);
+        state.pendingResult = null;
+    }
+});
+
+// Физическая клавиатура — KeyboardEvent.key.
+document.addEventListener('keydown', function (event) {
+    if (state.finished) return;
+    const key = event.key.toLowerCase();
+    if (/^[а-яё]$/.test(key)) {
+        event.preventDefault();
+        addLetter(key);
+    } else if (key === 'backspace') {
+        event.preventDefault();
+        removeLetter();
+    } else if (key === 'enter') {
+        event.preventDefault();
+        checkGuess();
+    }
+});
+
+
+document.getElementById('backButton').addEventListener('click', function () {
+    window.location.href = 'index.html';
+});
+
+// Пользовательское событие: игра сообщает интерфейсу о завершении.
+document.addEventListener('wordlefinished', function (event) {
+    const data = event.detail;
+    window.setTimeout(function () {
+        localStorage.setItem('wordleResult', JSON.stringify(data));
+        window.location.href = 'result.html';
+    }, 250);
+});
+
+// Promise используется как одноразовая асинхронная операция перехода к результату.
+function finishGame(won) {
+    state.finished = true;
+    const resultData = {
+        won: won,
+        answer: state.answer,
+        attempts: state.guesses.length,
+        maxAttempts: state.maxAttempts
     };
-    LAYOUT.forEach((letters, n) => {
-      const r = document.createElement('div');
-      r.className = 'krow';
-      for (const ch of letters) {
-        const k = document.createElement('div');
-        k.className = 'key'; k.tabIndex = 0; k.textContent = ch;
-        k.dataset.letter = ch; k.draggable = true; k.title = 'Перетащите на клетку';
-        r.appendChild(k);
-      }
-      if (n === 2) { r.insertBefore(fnKey('Ввод', 'enter'), r.firstChild); r.appendChild(fnKey('⌫', 'back')); }
-      kb.appendChild(r);
+    new Promise(function (resolve) {
+        window.setTimeout(function () { resolve(resultData); }, 300);
+    }).then(function (data) {
+        const event = new CustomEvent('wordlefinished', {
+            bubbles: true,
+            cancelable: true,
+            detail: data
+        });
+        document.dispatchEvent(event);
     });
-
-    const updateInfo = () => { info.textContent = `Попытка ${Math.min(row + 1, tries)} из ${tries}`; };
-    const tiles = () => board.children[row].children;
-    const tileIndex = t => (t && t.parentNode === board.children[row] ? +t.dataset.col : -1);
-    const render = () => {
-      const t = tiles();
-      for (let i = 0; i < 5; i++) {
-        t[i].textContent = cur[i];
-        t[i].classList.toggle('filled', cur[i] !== '');
-      }
-    };
-    function put(ch, i = -1) {
-      if (over || busy) return;
-      if (i < 0) i = cur.indexOf('');
-      if (i < 0) return;
-      cur[i] = ch; render();
-    }
-    function back() {
-      if (over || busy) return;
-      for (let i = 4; i >= 0; i--) if (cur[i]) { cur[i] = ''; break; }
-      render();
-    }
-    function paintKeys(word, res) {
-      [...word].forEach((ch, i) => {
-        const k = kb.querySelector(`[data-letter="${ch}"]`);
-        const old = k.hasAttribute('data-state') ? RANK[k.getAttribute('data-state')] : 0;
-        if (RANK[res[i]] > old) k.setAttribute('data-state', res[i]);
-      });
-    }
-    async function submit() {
-      if (over || busy) return;
-      if (cur.includes('')) return say('Нужно ввести 5 букв');
-      busy = true;
-      const word = cur.join(''), res = score(word, secret), t = tiles();
-      for (let i = 0; i < 5; i++) {
-        t[i].classList.add('flip');
-        setTimeout(() => (t[i].dataset.state = res[i]), 180);
-        await Promise.race([animEnd(t[i]), wait(600)]);
-        t[i].classList.remove('flip');
-      }
-      paintKeys(word, res);
-      busy = false;
-      board.dispatchEvent(new CustomEvent('wordchecked', { bubbles: true, detail: { word, result: res } }));
-    }
-
-    /* --- пользовательские события --- */
-    game.addEventListener('wordchecked', e => {
-      const win = e.detail.result.every(s => s === 'correct');
-      row++;
-      if (win || row >= tries) game.dispatchEvent(new CustomEvent('gameover', { detail: { win } }));
-      else { cur = Array(5).fill(''); updateInfo(); }
-    });
-    game.addEventListener('gameover', async e => {
-      over = true;
-      document.removeEventListener('keydown', onKey);
-      kb.querySelectorAll('[draggable]').forEach(k => k.removeAttribute('draggable'));
-      const time = ((e.timeStamp - t0) / 1000).toFixed(1);   // время по метке события
-      await wait(800);
-      resolve({ win: e.detail.win, secret, attempts: row, tries, time, level });
-    });
-
-    /* --- мышь: подсветка зелёным при наведении (всплытие, делегирование) --- */
-    kb.addEventListener('mouseover', e => {
-      const k = e.target.closest('.key');
-      if (k) k.style.backgroundColor = '#8ce99a';
-    });
-    kb.addEventListener('mouseout', e => {
-      const k = e.target.closest('.key');
-      if (k) k.style.backgroundColor = '';
-    });
-    kb.addEventListener('click', e => {
-      const k = e.target.closest('.key');
-      if (!k) return;
-      e.stopPropagation();
-      if (k.dataset.act === 'enter') submit();
-      else if (k.dataset.act === 'back') back();
-    });
-    kb.ondblclick = e => {                                   // запасной способ ввода
-      const k = e.target.closest('.key[data-letter]');
-      if (k) put(k.dataset.letter);
-    };
-    // фокус: focus/blur не всплывают, поэтому слушаем на фазе перехвата
-    kb.addEventListener('focus', e => e.target.classList.add('focused'), true);
-    kb.addEventListener('blur', e => e.target.classList.remove('focused'), true);
-
-    /* --- перетаскивание (DragEvent) --- */
-    kb.ondragstart = e => {
-      const k = e.target.closest('.key[data-letter]');
-      if (!k || over) return e.preventDefault();
-      e.dataTransfer.setData('text/plain', k.dataset.letter);
-      e.dataTransfer.effectAllowed = 'copy';
-    };
-    board.addEventListener('dragover', e => {
-      e.preventDefault();                                    // разрешаем drop
-      board.querySelectorAll('.over').forEach(x => x.classList.remove('over'));
-      const t = e.target.closest('.tile');
-      if (tileIndex(t) >= 0) t.classList.add('over');
-    });
-    board.addEventListener('drop', e => {
-      e.preventDefault();
-      board.querySelectorAll('.over').forEach(x => x.classList.remove('over'));
-      put(e.dataTransfer.getData('text/plain'), tileIndex(e.target.closest('.tile')));
-    });
-
-    /* --- сенсорные события: то же перетаскивание на телефоне --- */
-    let ghost = null, dragged = '';
-    const moveGhost = p => { ghost.style.left = p.clientX + 'px'; ghost.style.top = p.clientY + 'px'; };
-    kb.addEventListener('touchstart', e => {
-      const k = e.target.closest('.key[data-letter]');
-      if (!k || over) return;
-      dragged = k.dataset.letter;
-      ghost = document.createElement('div');
-      ghost.className = 'key ghost'; ghost.textContent = dragged;
-      document.body.appendChild(ghost);
-      moveGhost(e.touches[0]);
-    }, { passive: true });
-    kb.addEventListener('touchmove', e => {
-      if (!ghost) return;
-      e.preventDefault();
-      moveGhost(e.touches[0]);
-    }, { passive: false });
-    kb.addEventListener('touchend', e => {
-      if (!ghost) return;
-      const p = e.changedTouches[0];
-      document.body.removeChild(ghost); ghost = null;
-      const el = document.elementFromPoint(p.clientX, p.clientY);
-      if (el && board.contains(el)) put(dragged, tileIndex(el.closest('.tile')));
-    });
-
-    /* --- физическая клавиатура --- */
-    function onKey(e) {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 'Enter') { e.preventDefault(); submit(); }
-      else if (e.key === 'Backspace') { e.preventDefault(); back(); }
-      else if (e.key.length === 1) {
-        const ch = e.key.toLowerCase().replace('ё', 'е');
-        if (/^[а-я]$/.test(ch)) put(ch);
-        else if (/^[a-z]$/.test(ch)) say('Переключите раскладку на русскую');
-      }
-    }
-    document.addEventListener('keydown', onKey);
-    updateInfo();
-  });
 }
 
-/* ---------- Интерфейс 3: результат ---------- */
-function showEnd(r) {
-  return new Promise(resolve => {
-    const end = show('end');
-    end.dataset.result = r.win ? 'win' : 'lose';
-    end.querySelector('#endTitle').textContent = r.win ? 'Победа!' : 'Поражение';
-    const text = end.querySelector('#endText');
-    text.innerText = r.win
-      ? `Слово «${r.secret.toUpperCase()}» отгадано за ${r.attempts} из ${r.tries} попыток.`
-      : `Попытки закончились. Загаданное слово: «${r.secret.toUpperCase()}».`;
-    const stat = document.createElement('p');
-    stat.textContent = `Сложность: ${r.level.title}. Время: ${r.time} с.`;
-    text.after(stat);
-    end.querySelector('[name=again]').onclick = () => resolve('again');
-    end.querySelector('[name=menu]').onclick = () => resolve('menu');
-  });
-}
-
-// Фокус окна: non-user событие, вешаем через on*-свойства
-window.onblur = () => { document.title = 'Пауза…'; };
-window.onfocus = () => { document.title = 'Слово'; };
-
-(async function main() {
-  for (;;) {
-    const level = await showMenu();
-    let again;
-    do {
-      const result = await playGame(level);
-      again = (await showEnd(result)) === 'again';
-    } while (again);
-  }
-})();
+createBoard();
+createKeyboard();
+updateCounter();
